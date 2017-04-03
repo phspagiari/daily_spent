@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import calendar
 
-INITIAL_VALUE = os.getenv("INITIAL_VALUE")
+INITIAL_VALUE = float(os.environ["INITIAL_VALUE"])
 
 
 def _bootstrap():
