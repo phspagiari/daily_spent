@@ -4,86 +4,89 @@ import os
 from datetime import datetime
 import calendar
 
+
 INITIAL_VALUE = float(os.environ["INITIAL_VALUE"])
+FILENAME = "balance.json"
+
+
+def _write(data, filename=FILENAME):
+    with open(filename, "w+") as fp:
+        fp.write(json.dumps(data, sort_keys=True, indent=4))
 
 
 def _bootstrap():
-    with open("balance.json", "w+") as fp:
-        data = {
-            "balance": INITIAL_VALUE,
-            "remaining_days": get_remaining_days(), 
-            "log": {},
-            "current_avg": None,
-        }
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
+    data = {
+        "balance": INITIAL_VALUE,
+        "log": {},
+        "current_avg": None,
+    }
+    _write(data)
+    return True
 
 
 def get_remaining_days():
     now = datetime.now()
-    return calendar.monthrange(now.year, now.month)[1]-now.day
+    return calendar.monthrange(now.year, now.month)[1]-now.day+1
 
 
 def get_info():
-    with open("balance.json", "r") as fp:
-        data = json.loads(fp.read())
+    try:
+        with open(FILENAME, "r") as fp:
+            data = json.loads(fp.read())
+    except IOError as err:
+        if "No such file" in err.strerror:
+            _bootstrap()
+            with open(FILENAME, "r") as fp:
+                data = json.loads(fp.read())
     return data
 
 
-def update_balance(new_balance):
+def _update(new_balance, current_avg):
     data = get_info()
     data['balance'] = new_balance
-    with open("balance.json", "w") as fp:
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
+    data['current_avg'] = current_avg
+    _write(data)
 
-
-def update_avg(daily_avg):
-    data = get_info()
-    data['current_avg'] = daily_avg
-    with open("balance.json", "w") as fp:
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
-
-
-def update_days():
-    data = get_info()
-    data['remaining_days'] = get_remaining_days()
-    with open("balance.json", "w") as fp:
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
 
 
 def avg_by_day(value, days):
-    return value/days
+    return round(value/days, 2)
 
 
 def input_value(total, spent):
     return total-spent
 
-def log_daily(data, value, date):
+
+def log_daily(data, value, date, hour, reason):
     data = get_info()
-    data['log'][date] = value
-    with open("balance.json", "w") as fp:
-        fp.write(json.dumps(data, sort_keys=True, indent=4))
+    if date not in data['log']:
+        data['log'][date] = []
+    data['log'][date].append({"hour": hour, "value": value, "reason": reason })
+    _write(data)
 
+def try_shift_next_month(date):
+    if calendar.monthrange(date.year, date.month)[1] == date.day:
+        os.rename(FILENAME, "balance_%s.json" % date.month)
+        _bootstrap()
 
-def daily(day_spent):
+def daily(day_spent, reason):
     now = datetime.now()
-    date = now.strftime("%d/%m/%y-%H:%M:%S")
+    date = now.strftime("%d/%m/%y")
+    hour = now.strftime("%H:%M:%S")
 
-    if not os.path.exists("balance.json"):
+    if not os.path.exists(FILENAME):
         _bootstrap()
- 
-    if calendar.monthrange(now.year, now.month)[1] == now.day:
-        os.rename("balance.json", "balance_%s.json" % now.month)
-        _bootstrap()
+
+    try_shift_next_month(now)
 
     data = get_info()
     balance = data['balance']
-    remaining_days = get_remaining_days()
 
     new_balance = input_value(balance, day_spent)
-    daily_avg = round(avg_by_day(new_balance, remaining_days), 2)
-    update_avg(daily_avg)
-    update_balance(new_balance)
-    log_daily(data, day_spent, date)
+    daily_avg = avg_by_day(new_balance, get_remaining_days())
+    _update(new_balance, daily_avg)
+
+    log_daily(data=data, value=day_spent, date=date, hour=hour, reason=reason)
     return {"saldo": new_balance, "avg": daily_avg}
 
 

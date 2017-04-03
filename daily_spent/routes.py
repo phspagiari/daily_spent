@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import json
+
 from flask import jsonify, request, make_response
 from ds import daily, get_info
 from . import app
@@ -12,8 +14,9 @@ def index():
 
 @app.route('/v1/daily', methods=['POST'])
 def daily_route():
-    daily_spent = float(request.data)
-    result = daily(daily_spent)
+    data = json.loads(request.data)
+    result = daily(data['spent'], data['reason'])
+
     if result:
         return make_response(
             jsonify(result),
